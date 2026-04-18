@@ -28,12 +28,12 @@
           Name: "{{ item }}-{{ env }}"
       loop: "{{ instances }}"
       register: ec2_output
-      when: action == "create"
+    
 
     - name: print the output of ec2
       ansible.builtin.debug:
         msg: "{{ ec2_output }}"
-      when: action == "create"
+      
 
     - name: create route53 records
       amazon.aws.route53:
@@ -45,7 +45,7 @@
         value: "{{ item.instances[0].private_ip_address }}"
         wait: false
       loop: "{{ ec2_output.results }}"
-      when: action == "create"
+      
 
     - name: create roboshop record (frontend only)
       amazon.aws.route53:
@@ -58,7 +58,6 @@
         wait: false
       loop: "{{ ec2_output.results }}"
       when:
-        - action == "create"
         - item.item == "frontend"
 
     - name: delete route53 records
