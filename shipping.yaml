@@ -61,6 +61,15 @@
       ansible.builtin.service:
         deamon-reload: true 
     
+    - name: install dependencies
+      ansible.builtin.pip:
+        name: 
+        executable: pip3.9
+      loop:
+        - cryptography
+        - PyMySQL
+
+
     - name: import shipping data
       community.mysql.mysql_db:
         state: import
