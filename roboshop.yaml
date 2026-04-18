@@ -1,3 +1,5 @@
+# ansible-playbook -i localhost, -e instances=[mongodb, catalogue, ]
+
 - name: create ec2 and r53 records
   hosts: all
   connection: local
@@ -51,3 +53,19 @@
       wait: true
     loop: "{{ ec2_output.results }}"
     when: item.item == "frontend"
+
+  - name: delete route 53 records
+    ansible.aws.route53:
+      state: absent
+      zone: "{{ domain_name }}"
+      records: "{{ item.item }}-{{ env }}.{{ domain_name }}"
+      type: A 
+      ttl: 1
+      loop: "{{ instances }}"
+      when: action == "destroy"
+
+  - name: delete ec2 instance
+    amazon.aws.ec2_instance:
+      state: absent
+      name: "{{ item }}-{{ env }}"
+    loop: "{{ instance }}" 
