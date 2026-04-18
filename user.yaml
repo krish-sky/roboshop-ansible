@@ -49,32 +49,14 @@
       path: /app
 
   - name: copy user service
-    ansible.builtin.copy:
+    ansible.builtin.template:
       src: user.service
       dest: /etc/systemd/system/user.service
- 
-  - name: copy mongo repo
-    ansible.builtin.copy:
-      src: mongo.repo
-      dest: /etc/yum.repos.d/mongo.repo
-
-  - name: install mongodb client
-    ansible.builtin.dnf:
-      name: mongodb-mongosh
-      state: present
-
-  - name: check products loaded
-    ansible.builtin.command: mongosh --host "{{ MONGODB_HOST }}" --quiet  --eval 'db.getMongo().getDBNames().indexOf("user")'
-    register: user_output
-
-  - name: print the output
-    ansible.builtin.debug:
-      msg: "{{ user_output }}"
-
-  - name: load the products
-    ansible.builtin.shell: mongosh --host "{{ MONGODB_HOST }}" </app/db/master-data.js
-    when: user_output.stdout  | int < 0
-
+  
+  - name: deamon reload
+    ansible.builtin.service:
+      deamon-reload: true 
+  
   - name: start user
     ansible.builtin.service:
       name: user
