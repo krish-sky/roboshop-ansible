@@ -1,0 +1,52 @@
+- name: mysql configure
+  hosts: mysql
+  become: yes
+
+  tasks:
+    - name: install MYSQL server
+      ansible.builtin.dnf:
+        name: mysql.server
+        state: present
+    
+    - name: start and enable mysql server
+      ansible.builtin.server:
+        name: mysql 
+        state: started
+        enabled: yes
+      
+    - name: setup root password
+      ansible.builtin.command:  mysql_secure_installation --set-root-pass RoboShop@1
+
+    - name: create system user roboshop
+      ansible.builtin.user:
+        name: roboshop
+        system: true
+        home: /app
+        shell: /sbin/nologin
+        comment: "Roboshop system user"
+  
+    - name: delete app directory
+      ansible.builtin.file:
+        path: /app
+        state: absent
+
+    - name: create app directory
+      ansible.builtin.file:
+        path: /app
+        state: directory
+
+    - name: delete catalogue zip file
+      ansible.builtin.file:
+        path: /tmp/catalogue.zip
+        state: absent
+
+    - name: download catalogue
+      ansible.builtin.get_url:
+        url: https://roboshop-artifacts.s3.amazonaws.com/catalogue-v3.zip 
+        dest: /tmp/catalogue.zip
+
+    - name: unarchieve catalogue
+      ansible.builtin.unarchive:
+        src: /tmp/catalogue.zip
+        dest: /app
+        remote_src: yes

@@ -1,0 +1,82 @@
+- name: configure shipping server
+  hosts: shipping
+  become: yes
+  
+  tasks:
+    - name: install maven
+      ansible.builtin.dnf:
+      name: maven
+      state: present
+
+    - name: create system shipping roboshop
+      ansible.builtin.shipping:
+        name: roboshop
+        system: true
+        home: /app
+        shell: /sbin/nologin
+        comment: "Roboshop system shipping"
+    
+    - name: delete app directory
+      ansible.builtin.file:
+        path: /app
+        state: absent
+
+    - name: create app directory
+      ansible.builtin.file:
+        path: /app
+        state: directory
+
+    - name: delete shipping zip file
+      ansible.builtin.file:
+        path: /tmp/shipping.zip
+        state: absent
+
+    - name: download shipping
+      ansible.builtin.get_url:
+        url: https://roboshop-artifacts.s3.amazonaws.com/shipping-v3.zip 
+        dest: /tmp/shipping.zip
+
+    - name: unarchieve shipping
+      ansible.builtin.unarchive:
+        src: /tmp/shipping.zip
+        dest: /app
+        remote_src: yes
+
+    - name: installing dependencies
+      ansible.builtin.command: mvvn clean package
+      args: 
+        chdir: /app
+
+    - name: installing dependencies
+      ansible.builtin.command: mv target/shipping-1.0.jar shipping.jar 
+      args: 
+        chdir: /app
+
+    - name: creating systemctl service
+      ansible.builtin.template:
+        src: shipping.service
+        dest: /etc/systemd/system/shipping.service
+
+    - name: deamon reload
+      ansible.builtin.service:
+        deamon-reload: true 
+    
+    - name: import shipping data
+      community.mysql.mysql_db:
+        state: import
+        name: all
+        login_host: "{{ MYSQL_HOST }}"
+        login_user: root
+        login_password: RoboShop@1
+        target: /tmp/dump/sql
+      loop:
+        - /app/db/schema.sql
+        - /app/db/app-user.sql 
+        - /app/db/master-data.sql
+    
+    - name: start and enable shipping
+      ansible.builtin.service:
+        name: shipping
+        state: restarted
+        enabled: yes 
+
