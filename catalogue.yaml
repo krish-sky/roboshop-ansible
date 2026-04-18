@@ -1,63 +1,93 @@
-- name: catalogue configure
-  hosts: catalogue
-  become: yes
-
+# ansible-playbook -i localhost,   -e '{"instances":["mongodb","catalogue","redis","user","cart","mysql","shipping","rabbitmq","payment","frontend"]}'  -e action=destroy roboshop.yaml
+- name: create ec2 and r53 records
+  hosts: all
+  connection: local
+  vars:
+    sg_id: sg-076ec9ad23dab2b28
+    ami_id: ami-0220d79f3f480ecf5
+    domain_name: daws88s.online
+    env: dev
+    action: create
+    instances:
+    - mongodb
+    - catalogue
   tasks:
-    - name: enable nodesjs 20
-      ansible.builtin.command: dnf module enable nodejs:20 -y
+  ### CREATE ###
+  - name: create ec2 instance
+    amazon.aws.ec2_instance:
+      instance_type: "t3.micro"
+      security_group: "{{ sg_id }}"
+      image_id: "{{ ami_id }}"
+      name: "{{ item }}-{{ env }}"
+      tags:
+        Project: roboshop
+        Component: "{{ item }}"
+        Environment: "{{ env }}"
+        Name: "{{ item }}-{{ env }}"
+    loop: "{{ instances }}"
+    register: ec2_output
+    when: action == "create"
 
-    - name: install nodejs 
-      ansible.builtin.dnf:
-        name: nodejs
-        state: present
-    
-    - name: create system user roboshop
-      ansible.builtin.user:
-        name: roboshop
-        system: yes
-        home: /app
-        shell: /sbin/nologin
-        comment: "Roboshop system user"
+  - name: print the output
+    ansible.builtin.debug:
+      msg: "{{ ec2_output }}"
+    when: action == "create"
 
-    - name: create app directory
-      ansible.builtin.file:
-        path: /app
-        state: directory
-    
-    - name: downloading the catalogue
-      ansible.builtin.get_url:
-        url: https://roboshop-artifacts.s3.amazonaws.com/catalogue-v3.zip
-        dest: /tmp/catalogue.zip
+  - name: create r53 records
+    amazon.aws.route53:
+      state: present
+      zone: "{{ domain_name }}"
+      record: "{{ item.item }}-{{ env }}.{{ domain_name }}" # mongodb-dev.daws88s.online, frontend-dev.daws88s.online
+      type: A
+      ttl: 1
+      value: "{{ item.instances[0].private_ip_address }}"
+      wait: false
+      overwrite: true
+    loop: "{{ ec2_output.results }}" # list
+    when: action == "create"
 
-    - name: unarchive catalogue
-      ansible.builtin.unarchive:
-        src: /tmp/catalogue.zip
-        dest: /app
-        remote_src: yes
+  - name: create r53 record for frontend
+    amazon.aws.route53:
+      state: present
+      zone: "{{ domain_name }}"
+      record: "roboshop-{{ env }}.{{ domain_name }}" # roboshop-dev.daws88s.online
+      type: A
+      ttl: 1
+      value: "{{ item.instances[0].public_ip_address }}"
+      wait: false
+      overwrite: true
+    loop: "{{ ec2_output.results }}"
+    when:  # and
+    - item.item == "frontend"
+    - action == "create"
 
-    - name: install npm dependencies 
-      community.general.npm:
-        path: /app
+  ### DESTROY ###
+  - name: delete r53 records for frontend
+    amazon.aws.route53:
+      state: absent
+      zone: "{{ domain_name }}"
+      record: "roboshop-{{ env }}.{{ domain_name }}" # roboshop-dev.daws88s.online
+      type: A
+      ttl: 1
+    loop: "{{ instances }}"
+    when:  # and
+    - item == "frontend"
+    - action == "destroy"
 
-    - name: copy service file
-      ansible.builtin.copy:
-        src: catalogue.service
-        dest: /etc/systemd/system/catalogue.service
+  - name: delete r53 records
+    amazon.aws.route53:
+      state: absent
+      zone: "{{ domain_name }}"
+      record: "{{ item }}-{{ env }}.{{ domain_name }}" # roboshop-dev.daws88s.online
+      type: A
+      ttl: 1
+    loop: "{{ instances }}"
+    when: action == "destroy"
 
-    - name: copy mongo repo
-      ansible.builtin.copy:
-        src: mongo.repo
-        dest: /etc/yum.repos.d/mongo.repo
-
-    - name: install mongodb clinet
-      ansible.builtin.dnf:
-        name: mongodb-mongosh
-        state: present
-    
-    - name: check products loaded
-      ansible.builtin.command: mongosh --host "{{ MONGODB_HOST }}" --quiet  --eval 'db.getMongo().getDBNames().indexOf("catalogue")'
-      register: catalogue_output
-
-    - name: print the output
-      ansible.builtin.debug:
-        msg: "{{ catalogue_output }}"
+  - name: delete ec2 instance
+    amazon.aws.ec2_instance:
+      state: absent
+      name: "{{ item }}-{{ env }}"
+      wait: false
+    loop: "{{ instances }}"
+    when: action == "destroy"
