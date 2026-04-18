@@ -27,6 +27,8 @@
   - name: print the output of ec2
     ansible.builtin.debug:
       msg: "{{ ec2_output }}"
+
+      
   - name: create route53 records
     amazon.aws.route53:
       state: present
